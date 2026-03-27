@@ -39,11 +39,6 @@ public class AutoServerControl {
      * Иногда два или более разов пишется "отправился в {servername}.
      *
      * Надо улучшить проверку состояния сервера, иногда пихает ранее положеного "Server is still starting".
-     *
-     * Надо перенести всё в конфиг файлы, а пароли скрыть. Так же лучше для каждого сервера чтобы были свои ssh данные.
-     *
-     * Надо сделать "асихнронную" проверку серверов. А то, например, с одного сервера вышел игрок минуту назад, а общий таймер натикал 5 минут и выключает сервер раньше времени.
-     *
      * Ну, и было бы круче, чтобы после захода на сервер был титульник "Добро пожаловать в {serverName}" (можно использовать из serverTexts)
      *
      * */
@@ -78,18 +73,6 @@ public class AutoServerControl {
     @Subscribe
     public void onProxyInit(ProxyInitializeEvent event) {
         servers.clear();
-       /* servers.put("cuties_server",
-                new deVDemServer(server, "192.168.0.233", "cuties_server", "cuties.service", "§dCuties", "root", ""));
-
-        servers.put("minigames",
-                new deVDemServer(server, "192.168.0.234", "minigames", "minigames.service", "§bMinigames", "root", ""));
-
-        servers.put("skyblock",
-                new deVDemServer(server, "192.168.0.235", "skyblock", "skyblock.service", "§eSkyBlock", "root", ""));
-
-        servers.put("oldgold",
-                new deVDemServer(server, "192.168.0.236", "oldgold", "oldgold.service", "§6OldGold", "root", ""));
-                */
         createDefaultConfig();
         loadServers();
         logger.info("AutoServerControl загружен!");
@@ -121,8 +104,7 @@ public class AutoServerControl {
             Yaml yaml = new Yaml();
             Map<String, Object> data = yaml.load(Files.newInputStream(configPath));
 
-            Map<String, Map<String, Object>> serversSection =
-                    (Map<String, Map<String, Object>>) data.get("servers");
+            Map<String, Map<String, Object>> serversSection = (Map<String, Map<String, Object>>) data.get("servers");
 
             for (String key : serversSection.keySet()) {
 
@@ -134,15 +116,7 @@ public class AutoServerControl {
                 String user = (String) s.get("sshUser");
                 String password = (String) s.get("sshPassword");
 
-                configuredServer serverObj = new configuredServer(
-                        server,
-                        ip,
-                        key,
-                        service,
-                        display,
-                        user,
-                        password
-                );
+                configuredServer serverObj = new configuredServer(server, ip, key, service, display, user, password);
 
                 servers.put(key, serverObj);
 
@@ -157,8 +131,7 @@ public class AutoServerControl {
     @Subscribe
     public void onPostLoginEvent(PostLoginEvent event) {
         Player player = event.getPlayer();
-        Component broadcastMsg = Component.text(
-                "§eИгрок §f" + player.getUsername() + "§e подключился на сервер!");
+        Component broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e подключился на сервер!");
         server.getAllPlayers().forEach(p -> p.sendMessage(broadcastMsg));
     }
 
@@ -190,21 +163,17 @@ public class AutoServerControl {
         Player player = event.getPlayer();
         Optional<ServerConnection> newServer = player.getCurrentServer();
         String serverName;
-        if (newServer.isPresent())
-            serverName = newServer.get().getServerInfo().getName();
-        else
-            return;
+        if (newServer.isPresent()) serverName = newServer.get().getServerInfo().getName();
+        else return;
         if (event.getPreviousServer() == null) {
             return;
         }
         configuredServer current = servers.get(serverName);
         Component broadcastMsg;
         if (serverName.equalsIgnoreCase("lobby")) {
-            broadcastMsg = Component.text(
-                    "§eИгрок §f" + player.getUsername() + "§e вернулся в лобби");
+            broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e вернулся в лобби");
         } else {
-            broadcastMsg = Component.text(
-                    "§eИгрок §f" + player.getUsername() + "§e отправился в " + current.displayName);
+            broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e отправился в " + current.displayName);
         }
         server.getAllPlayers().forEach(p -> p.sendMessage(broadcastMsg));
         // === ИГРОК УШЁЛ С СЕРВЕРА ===
@@ -241,7 +210,6 @@ public class AutoServerControl {
     public void onServerPreConnect(ServerPreConnectEvent event) {
 
         Player player = event.getPlayer();
-
 
         UUID playerId = player.getUniqueId();
 
@@ -282,16 +250,13 @@ public class AutoServerControl {
 
         event.setResult(ServerPreConnectEvent.ServerResult.denied());
         player.sendMessage(Component.text("§7Проверка сервера..."));
+        startingPlayers.add(playerId);
 
         target.ping().whenComplete((ping, error) -> {
             if (error != null) {
                 startingServers.add(serverName);
                 srv.status = configuredServer.StatusEnum.STARTING;
-
                 player.sendMessage(Component.text("§6Сервер запускается..."));
-
-                startingPlayers.add(playerId);
-
                 startServer(serverName);
                 waitAndConnect(player, target, serverName);
                 event.setResult(ServerPreConnectEvent.ServerResult.denied());
@@ -307,44 +272,41 @@ public class AutoServerControl {
     // АВТОПОДКЛЮЧЕНИЕ
     // =========================
     private void waitAndConnect(Player player, RegisteredServer target, String serverName) {
-        server.getScheduler()
-                .buildTask(this, new Runnable() {
-                    int attempts = 0;
-                    boolean done = false;
+        server.getScheduler().buildTask(this, new Runnable() {
+            int attempts = 0;
+            boolean done = false;
 
-                    @Override
-                    public void run() {
+            @Override
+            public void run() {
 
-                        if (done) return;
+                if (done) return;
 
-                        attempts++;
+                attempts++;
 
-                        target.ping().whenComplete((ping, error) -> {
+                target.ping().whenComplete((ping, error) -> {
+                    if (done) return;
+                    if (error == null) {
 
-                            if (error == null) {
+                        player.sendMessage(Component.text("§aСервер запущен!"));
+                        connectingPlayers.add(player.getUniqueId());
+                        player.createConnectionRequest(target).fireAndForget();
+                        servers.get(serverName).scheduleShutdown(pluginClass);
 
-                                player.sendMessage(Component.text("§aСервер запущен!"));
-                                connectingPlayers.add(player.getUniqueId());
-                                player.createConnectionRequest(target).fireAndForget();
-                                servers.get(serverName).scheduleShutdown(pluginClass);
+                        startingServers.remove(serverName);
+                        servers.get(serverName).status = configuredServer.StatusEnum.ONLINE;
+                        done = true;
+                        startingPlayers.remove(player.getUniqueId());
+                    } else if (attempts >= 10) {
 
-                                startingServers.remove(serverName);
-                                servers.get(serverName).status = configuredServer.StatusEnum.ONLINE;
-                                done = true;
-                                startingPlayers.remove(player.getUniqueId());
-                            } else if (attempts >= 20) {
-
-                                player.sendMessage(Component.text("§cСервер не запустился"));
-                                servers.get(serverName).status = configuredServer.StatusEnum.ERROR;
-                                startingServers.remove(serverName);
-                                done = true;
-                                startingPlayers.remove(player.getUniqueId());
-                            }
-                        });
+                        player.sendMessage(Component.text("§cСервер не запустился"));
+                        servers.get(serverName).status = configuredServer.StatusEnum.ERROR;
+                        startingServers.remove(serverName);
+                        done = true;
+                        startingPlayers.remove(player.getUniqueId());
                     }
-                })
-                .repeat(5, TimeUnit.SECONDS)
-                .schedule();
+                });
+            }
+        }).repeat(10, TimeUnit.SECONDS).schedule();
     }
 
     // =========================
@@ -414,9 +376,7 @@ public class AutoServerControl {
         if (globalMessage.isBlank()) return;
 
         // получаем сервер игрока
-        String serverName = player.getCurrentServer()
-                .map(s -> s.getServerInfo().getName())
-                .orElse("unknown");
+        String serverName = player.getCurrentServer().map(s -> s.getServerInfo().getName()).orElse("unknown");
 
         configuredServer serverd = servers.get(serverName);
 
@@ -427,11 +387,7 @@ public class AutoServerControl {
         }
 
         // красивое сообщение
-        Component msg = Component.text(
-                "§6[Глобальный] §f" + player.getUsername() +
-                        " §7(" + (serverd != null ? serverd.displayName : "lobby") + "§7) §8» §f" +
-                        globalMessage
-        );
+        Component msg = Component.text("§6[Глобальный] §f" + player.getUsername() + " §7(" + (serverd != null ? serverd.displayName : "lobby") + "§7) §8» §f" + globalMessage);
 
         // рассылка всем игрокам
         server.getAllPlayers().forEach(p -> p.sendMessage(msg));
