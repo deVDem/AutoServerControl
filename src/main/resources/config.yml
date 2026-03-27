@@ -1,0 +1,17 @@
+#This config for servers. Add your server like example.
+
+servers:
+  minigames:
+    ip: "192.168.0.23" # IP of your server
+    service: "minigames.service" # name of service on your machine
+    display: "§b§cM§6I§eN§aI§bG§9A§dM§5E§cS" #Display text for users for chat: "mdeVDem joined in Minigames"
+    # SSH credentials for manage your service
+    sshUser: ""
+    sshPassword: ""
+
+  skyblock:
+    ip: "192.168.0.24"
+    service: "skyblock.service"
+    display: "§eSkyBlock"
+    sshUser: ""
+    sshPassword: ""
