@@ -34,12 +34,8 @@ public class AutoServerControl {
 
     /*
      * Известные баги.
-     * Можно бегать между порталами (или спамить /server serverName) и будет наполняться буфер запускаемых серверов. Можно так и заддосить случайно, надо сделать некий тайм-аут, типа "вы уже запустили {servename}, подождите загрузки".
      *
-     * Иногда два или более разов пишется "отправился в {servername}.
-     *
-     * Надо улучшить проверку состояния сервера, иногда пихает ранее положеного "Server is still starting".
-     * Ну, и было бы круче, чтобы после захода на сервер был титульник "Добро пожаловать в {serverName}" (можно использовать из serverTexts)
+     * Было бы круче, чтобы после захода на сервер был титульник "Добро пожаловать в {serverName}" (можно использовать из serverTexts)
      *
      * */
 
@@ -286,19 +282,20 @@ public class AutoServerControl {
                 target.ping().whenComplete((ping, error) -> {
                     if (done) return;
                     if (error == null) {
+                        if (ping.getPlayers().isPresent() && ping.getPlayers().get().getMax() > 0) {
+                            player.sendMessage(Component.text("§aСервер запущен!"));
+                            connectingPlayers.add(player.getUniqueId());
+                            player.createConnectionRequest(target).fireAndForget();
+                            servers.get(serverName).scheduleShutdown(pluginClass);
 
-                        player.sendMessage(Component.text("§aСервер запущен!"));
-                        connectingPlayers.add(player.getUniqueId());
-                        player.createConnectionRequest(target).fireAndForget();
-                        servers.get(serverName).scheduleShutdown(pluginClass);
-
-                        startingServers.remove(serverName);
-                        servers.get(serverName).status = configuredServer.StatusEnum.ONLINE;
-                        done = true;
-                        startingPlayers.remove(player.getUniqueId());
+                            startingServers.remove(serverName);
+                            servers.get(serverName).status = configuredServer.StatusEnum.ONLINE;
+                            done = true;
+                            startingPlayers.remove(player.getUniqueId());
+                        }
                     } else if (attempts >= 10) {
 
-                        player.sendMessage(Component.text("§cСервер не запустился"));
+                        player.sendMessage(Component.text("§cСервер не запустился :("));
                         servers.get(serverName).status = configuredServer.StatusEnum.ERROR;
                         startingServers.remove(serverName);
                         done = true;
