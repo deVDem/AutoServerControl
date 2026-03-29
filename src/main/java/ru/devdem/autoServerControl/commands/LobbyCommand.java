@@ -3,23 +3,15 @@ package ru.devdem.autoServerControl.commands;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
 import net.kyori.adventure.text.Component;
-import ru.devdem.autoServerControl.AutoServerControl;
-import ru.devdem.autoServerControl.classes.configuredServer;
 
-public class ServerAliasCommand implements SimpleCommand {
+public class LobbyCommand implements SimpleCommand {
 
-    private final configuredServer server;
-    private final AutoServerControl plugin;
+    private final ProxyServer proxy;
 
-    public ServerAliasCommand(AutoServerControl plugin, configuredServer server) {
-        this.plugin = plugin;
-        this.server = server;
-    }
-
-    @Override
-    public boolean hasPermission(Invocation invocation) {
-        return invocation.source().hasPermission("devdem."+server.name);
+    public LobbyCommand(ProxyServer server) {
+        this.proxy = server;
     }
 
     @Override
@@ -33,10 +25,10 @@ public class ServerAliasCommand implements SimpleCommand {
         }
 
         // Получаем сервер
-        plugin.server.getServer(server.name).ifPresentOrElse(srv -> {
+        proxy.getServer("lobby").ifPresentOrElse(server -> {
             // Если уже на сервере — можно не телепортировать
             if (player.getCurrentServer()
-                    .map(s -> s.getServerInfo().getName().equalsIgnoreCase(server.name))
+                    .map(s -> s.getServerInfo().getName().equalsIgnoreCase("lobby"))
                     .orElse(false)) {
 
                 player.sendMessage(Component.text("Ты уже на этом сервере."));
@@ -44,7 +36,7 @@ public class ServerAliasCommand implements SimpleCommand {
             }
 
             // Отправка
-            player.createConnectionRequest(srv).fireAndForget();
+            player.createConnectionRequest(server).fireAndForget();
 
         }, () -> {
             player.sendMessage(Component.text("Сервер не найден."));

@@ -9,7 +9,7 @@ public class Utils {
         for (String s : aliases) {
             ans=ans.concat(", " + s);
         }
-        if (!ans.startsWith(", ")) {
+        if (ans.startsWith(", ")) {
             ans = ans.substring(2);
         }
         return ans;

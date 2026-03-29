@@ -1,12 +1,8 @@
 package ru.devdem.autoServerControl;
 
 import com.google.inject.Inject;
-import com.jcraft.jsch.ChannelExec;
-import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.Session;
 import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
-import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.PostLoginEvent;
@@ -20,12 +16,10 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
-import com.velocitypowered.api.proxy.ServerConnection;
-import com.velocitypowered.api.proxy.server.RegisteredServer;
 import net.kyori.adventure.text.Component;
 import org.slf4j.Logger;
-import org.yaml.snakeyaml.Yaml;
 import ru.devdem.autoServerControl.classes.configuredServer;
+import ru.devdem.autoServerControl.commands.LobbyCommand;
 import ru.devdem.autoServerControl.commands.ReloadCommand;
 import ru.devdem.autoServerControl.commands.ServerAliasCommand;
 import ru.devdem.autoServerControl.functions.OfflineMode;
@@ -33,12 +27,8 @@ import ru.devdem.autoServerControl.utils.ConfigsHandler;
 import ru.devdem.autoServerControl.utils.ConnectionServerHandler;
 import ru.devdem.autoServerControl.utils.Utils;
 
-import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 @Plugin(id = "autoservercontrol", name = "AutoServerControl", version = BuildConstants.VERSION, description = "Only for deVDem MC HUB", url = "devdem.ru/mc-hub", authors = {"deVDem"})
 public class AutoServerControl {
@@ -52,8 +42,6 @@ public class AutoServerControl {
 
     public final ProxyServer server;
     private final Logger logger;
-    private final Path dataDirectory;
-    private final AutoServerControl pluginClass;
 
 
     public Logger getLogger() {
@@ -68,10 +56,8 @@ public class AutoServerControl {
     public AutoServerControl(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
         this.server = server;
         this.logger = logger;
-        this.dataDirectory = dataDirectory;
-        pluginClass = this;
-        offlineModeClass = OfflineMode.getInstance(pluginClass);
-        configsHandler = new ConfigsHandler(this, this.logger, this.dataDirectory, this.server);
+        offlineModeClass = OfflineMode.getInstance(this);
+        configsHandler = new ConfigsHandler(this, this.logger, dataDirectory, this.server);
         serverHandler = ConnectionServerHandler.getInstance(this);
     }
 
@@ -101,11 +87,20 @@ public class AutoServerControl {
 
         for (configuredServer srv : serverHandler.servers.values()) {
             CommandMeta commandMeta =  manager.metaBuilder(srv.name)
-                            .aliases(Utils.getAliasesFromSet(srv.aliases))
+                            .aliases(srv.aliases.toArray(new String[0]))
                             .build();
             manager.register(commandMeta, new ServerAliasCommand(this, srv));
             servercommands.add(commandMeta);
+            logger.info("Добавлены команды {} для {}", Utils.getAliasesFromSet(srv.aliases), srv.name);
         }
+        manager.register(manager.metaBuilder("lobby")
+                        .aliases("l", "hub")
+                        .build(),
+                new LobbyCommand(server)
+        );
+
+
+        logger.info("Команды загружены.");
     }
 
     @Subscribe

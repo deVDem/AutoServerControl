@@ -1,6 +1,5 @@
 package ru.devdem.autoServerControl.functions;
 
-import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.event.connection.PreLoginEvent;
 import com.velocitypowered.api.event.player.GameProfileRequestEvent;
 import com.velocitypowered.api.util.GameProfile;
@@ -15,7 +14,7 @@ public class OfflineMode {
 
     private static OfflineMode instance;
     private AutoServerControl plugin;
-    private Logger logger;
+    private final Logger logger;
 
     private Set<String> onlineUsers = new HashSet<>();
 
@@ -26,11 +25,7 @@ public class OfflineMode {
     }
 
     public static OfflineMode getInstance() {
-        if (instance == null) {
-            return new OfflineMode(null);
-        } else {
-            return instance;
-        }
+        return Objects.requireNonNullElseGet(instance, () -> new OfflineMode(null));
     }
 
     public static OfflineMode getInstance(AutoServerControl plugin) {
@@ -48,14 +43,14 @@ public class OfflineMode {
 
     public void onPreLogin(PreLoginEvent event) {
         String username = event.getUsername();
-        if (username != null && !isUserConfigured(username)) {
+        if (username != null && isUserNotConfigured(username)) {
             event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
         }
     }
 
     public void onGameProfileRequest(GameProfileRequestEvent event) {
         String username = event.getUsername();
-        if (username != null && !isUserConfigured(username)) {
+        if (username != null && isUserNotConfigured(username)) {
             UUID offlineUuid = UuidUtils.generateOfflinePlayerUuid(username);
             GameProfile offlineProfile = new GameProfile(offlineUuid, username, Collections.emptyList());
             event.setGameProfile(offlineProfile);
@@ -63,9 +58,9 @@ public class OfflineMode {
         }
     }
 
-    private boolean isUserConfigured(String username) {
+    private boolean isUserNotConfigured(String username) {
         String normalized = Utils.normalizeUsername(username);
-        return onlineUsers.contains(normalized);
+        return !onlineUsers.contains(normalized);
     }
 
 }

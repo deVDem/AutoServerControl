@@ -5,7 +5,6 @@ import com.velocitypowered.api.scheduler.ScheduledTask;
 import ru.devdem.autoServerControl.AutoServerControl;
 import ru.devdem.autoServerControl.utils.ConnectionServerHandler;
 
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -28,10 +27,10 @@ public class configuredServer {
     public final String displayName;
     public final String sshUser;
     public final String sshPassword;
-    public final Set<String> aliases = new HashSet<>();
+    public final Set<String> aliases;
 
     private ScheduledTask shutdownTask;
-    private ConnectionServerHandler serverHandler;
+    private final ConnectionServerHandler serverHandler;
 
     public StatusEnum status = StatusEnum.NONE;
 
@@ -51,6 +50,7 @@ public class configuredServer {
         this.displayName = displayName;
         this.sshUser = sshUser;
         this.sshPassword = sshPassword;
+        this.aliases = aliases;
         serverHandler = ConnectionServerHandler.getInstance(null); // я надеюсь, что Handler уже создан и он просто вернёт готовый
     }
 
