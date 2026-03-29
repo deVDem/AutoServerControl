@@ -7,6 +7,7 @@ import com.velocitypowered.api.util.GameProfile;
 import com.velocitypowered.api.util.UuidUtils;
 import org.slf4j.Logger;
 import ru.devdem.autoServerControl.AutoServerControl;
+import ru.devdem.autoServerControl.utils.Utils;
 
 import java.util.*;
 
@@ -63,12 +64,8 @@ public class OfflineMode {
     }
 
     private boolean isUserConfigured(String username) {
-        String normalized = normalizeUsername(username);
+        String normalized = Utils.normalizeUsername(username);
         return onlineUsers.contains(normalized);
-    }
-
-    private String normalizeUsername(String username) {
-        return username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
     }
 
 }

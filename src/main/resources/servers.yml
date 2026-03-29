@@ -8,6 +8,10 @@ servers:
     # SSH credentials for manage your service
     sshUser: ""
     sshPassword: ""
+    #aliases for command
+    aliases:
+      - "minigames"
+      - "games"
 
   skyblock:
     ip: "192.168.0.24"
@@ -15,3 +19,6 @@ servers:
     display: "§eSkyBlock"
     sshUser: ""
     sshPassword: ""
+    aliases:
+      - "skyblock"
+      - "skyb"

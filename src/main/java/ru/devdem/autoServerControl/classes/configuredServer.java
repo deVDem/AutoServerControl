@@ -3,7 +3,10 @@ package ru.devdem.autoServerControl.classes;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.scheduler.ScheduledTask;
 import ru.devdem.autoServerControl.AutoServerControl;
+import ru.devdem.autoServerControl.utils.ConnectionServerHandler;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public class configuredServer {
@@ -25,8 +28,11 @@ public class configuredServer {
     public final String displayName;
     public final String sshUser;
     public final String sshPassword;
+    public final Set<String> aliases = new HashSet<>();
 
     private ScheduledTask shutdownTask;
+    private ConnectionServerHandler serverHandler;
+
     public StatusEnum status = StatusEnum.NONE;
 
     public configuredServer(ProxyServer proxy,
@@ -35,7 +41,8 @@ public class configuredServer {
                             String service,
                             String displayName,
                             String sshUser,
-                            String sshPassword) {
+                            String sshPassword,
+                            Set<String> aliases) {
 
         this.proxy = proxy;
         this.ip = ip;
@@ -44,6 +51,7 @@ public class configuredServer {
         this.displayName = displayName;
         this.sshUser = sshUser;
         this.sshPassword = sshPassword;
+        serverHandler = ConnectionServerHandler.getInstance(null); // я надеюсь, что Handler уже создан и он просто вернёт готовый
     }
 
     // =========================
@@ -58,7 +66,7 @@ public class configuredServer {
                     proxy.getServer(name).ifPresent(srv -> {
                         if (srv.getPlayersConnected().isEmpty()) {
                             plugin.getLogger().info("Выключаем сервер: {}", name);
-                            plugin.stopServer(name);
+                            serverHandler.stopServer(name);
                             status = StatusEnum.SHUTDOWN;
                         }
                     });
