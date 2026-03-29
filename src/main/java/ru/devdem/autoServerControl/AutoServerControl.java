@@ -4,9 +4,13 @@ import com.google.inject.Inject;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
+import com.velocitypowered.api.command.CommandManager;
+import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.PostLoginEvent;
+import com.velocitypowered.api.event.connection.PreLoginEvent;
+import com.velocitypowered.api.event.player.GameProfileRequestEvent;
 import com.velocitypowered.api.event.player.PlayerChatEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.player.ServerPreConnectEvent;
@@ -21,6 +25,8 @@ import net.kyori.adventure.text.Component;
 import org.slf4j.Logger;
 import org.yaml.snakeyaml.Yaml;
 import ru.devdem.autoServerControl.classes.configuredServer;
+import ru.devdem.autoServerControl.commands.ReloadCommand;
+import ru.devdem.autoServerControl.functions.OfflineMode;
 
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -48,12 +54,13 @@ public class AutoServerControl {
     private final Set<UUID> connectingPlayers = ConcurrentHashMap.newKeySet();
     private final Set<UUID> startingPlayers = ConcurrentHashMap.newKeySet();
 
-
     private final Map<String, configuredServer> servers = new HashMap<>();
 
     public Logger getLogger() {
         return logger;
     }
+
+    public OfflineMode offlineModeClass;
 
     @Inject
     public AutoServerControl(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -61,6 +68,7 @@ public class AutoServerControl {
         this.logger = logger;
         this.dataDirectory = dataDirectory;
         pluginClass = this;
+        offlineModeClass = OfflineMode.getInstance(pluginClass);
     }
 
     // =========================
@@ -69,9 +77,18 @@ public class AutoServerControl {
     @Subscribe
     public void onProxyInit(ProxyInitializeEvent event) {
         servers.clear();
-        createDefaultConfig();
-        loadServers();
+        reloadConfigs();
+        registerCommands();
         logger.info("AutoServerControl загружен!");
+    }
+
+    private void registerCommands() {
+        CommandManager manager = server.getCommandManager();
+        manager.register(manager.metaBuilder("ascreload")
+                        .aliases("areload")
+                        .build(),
+                new ReloadCommand(this)
+        );
     }
 
     private void createDefaultConfig() {
@@ -81,11 +98,18 @@ public class AutoServerControl {
             }
 
             Path configPath = dataDirectory.resolve("config.yml");
-
             if (!Files.exists(configPath)) {
                 try (InputStream in = getClass().getClassLoader().getResourceAsStream("config.yml")) {
                     Files.copy(in, configPath);
                     logger.info("Создан config.yml");
+                }
+            }
+
+            Path usersPath = dataDirectory.resolve("onlineUsers.yml");
+            if (!Files.exists(usersPath)) {
+                try (InputStream in = getClass().getClassLoader().getResourceAsStream("onlineUsers.yml")) {
+                    Files.copy(in, usersPath);
+                    logger.info("Создан onlineUsers.yml");
                 }
             }
         } catch (Exception e) {
@@ -120,8 +144,38 @@ public class AutoServerControl {
             }
 
         } catch (Exception e) {
-            logger.error("Ошибка загрузки конфига", e);
+            logger.error("Ошибка загрузки конфига с серверами", e);
         }
+    }
+
+    private void loadOnlineUsers() {
+        try {
+            Path usersPath = dataDirectory.resolve("onlineUsers.yml");
+            Set<String> onlineUsers = new HashSet<>();
+
+            Yaml yaml = new Yaml();
+            Map<String, Object> data = yaml.load(Files.newInputStream(usersPath));
+            List<String> usersSection = (List<String>) data.get("onlineUsers");
+
+            if (usersSection != null) {
+                onlineUsers.addAll(usersSection);
+            }
+            offlineModeClass.updateOnlineUsers(onlineUsers);
+            logger.info("Загружено {} online users", onlineUsers.size());
+
+        } catch (Exception e) {
+            logger.error("Ошибка загрузки конфига с онлайн пользователями", e);
+        }
+    }
+
+    @Subscribe
+    public void onPreLogin(PreLoginEvent event) {
+        offlineModeClass.onPreLogin(event);
+    }
+
+    @Subscribe
+    public void onGameProfileRequest(GameProfileRequestEvent event) {
+        offlineModeClass.onGameProfileRequest(event);
     }
 
     @Subscribe
@@ -144,9 +198,7 @@ public class AutoServerControl {
             server.getServer(srv.name).ifPresent(registeredServer -> {
                 int players = registeredServer.getPlayersConnected().size();
                 if (players == 0) {
-                    if (srv.status != configuredServer.StatusEnum.AWAITING) {
-                        srv.scheduleShutdown(this);
-                    }
+                    srv.scheduleShutdown(this);
                 } else {
                     srv.cancelShutdown();
                 }
@@ -388,5 +440,11 @@ public class AutoServerControl {
 
         // рассылка всем игрокам
         server.getAllPlayers().forEach(p -> p.sendMessage(msg));
+    }
+
+    public void reloadConfigs() {
+        createDefaultConfig();
+        loadServers();
+        loadOnlineUsers();
     }
 }
