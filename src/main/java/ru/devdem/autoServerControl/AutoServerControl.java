@@ -97,11 +97,11 @@ public class AutoServerControl {
                 Files.createDirectories(dataDirectory);
             }
 
-            Path configPath = dataDirectory.resolve("config.yml");
-            if (!Files.exists(configPath)) {
-                try (InputStream in = getClass().getClassLoader().getResourceAsStream("config.yml")) {
-                    Files.copy(in, configPath);
-                    logger.info("Создан config.yml");
+            Path serversPath = dataDirectory.resolve("servers.yml");
+            if (!Files.exists(serversPath)) {
+                try (InputStream in = getClass().getClassLoader().getResourceAsStream("servers.yml")) {
+                    Files.copy(in, serversPath);
+                    logger.info("Создан servers.yml");
                 }
             }
 
@@ -119,10 +119,10 @@ public class AutoServerControl {
 
     private void loadServers() {
         try {
-            Path configPath = dataDirectory.resolve("config.yml");
+            Path serverPath = dataDirectory.resolve("servers.yml");
 
             Yaml yaml = new Yaml();
-            Map<String, Object> data = yaml.load(Files.newInputStream(configPath));
+            Map<String, Object> data = yaml.load(Files.newInputStream(serverPath));
 
             Map<String, Map<String, Object>> serversSection = (Map<String, Map<String, Object>>) data.get("servers");
 
