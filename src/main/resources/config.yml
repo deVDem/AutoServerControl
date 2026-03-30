@@ -1,1 +1,10 @@
 # future config for enable aliases, controlwithSSH, and more.
+
+# MySQL connection config
+mysql:
+  host: "127.0.0.1"
+  port: 3306
+  database: "velocity_users"
+  username: "root"
+  password: "password"
+  useSSL: false

@@ -15,15 +15,24 @@ repositories {
         name = "papermc-repo"
         url = "https://repo.papermc.io/repository/maven-public/"
     }
+    maven {
+        url = uri("https://repo.opencollab.dev/main/")
+    }
+
 }
 
 dependencies {
     compileOnly("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
     annotationProcessor("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
 
+    compileOnly('org.geysermc.floodgate:api:2.2.4-SNAPSHOT')
+    compileOnly('org.geysermc.geyser:api:2.9.0-SNAPSHOT')
 
-    implementation 'com.jcraft:jsch:0.1.55'
-    implementation 'org.yaml:snakeyaml:2.2'
+
+    implementation 'com.jcraft:jsch:0.1.55' // ssh
+    implementation 'org.yaml:snakeyaml:2.2' // yaml
+    implementation 'com.mysql:mysql-connector-j:8.3.0' // mysql
+    implementation 'com.zaxxer:HikariCP:5.1.0' // hihari, maybe best use otherwise mysql-connector
 }
 
 tasks {
@@ -39,6 +48,8 @@ java {
 
 shadowJar {
     archiveClassifier.set('')
+
+    mergeServiceFiles()
 }
 
 tasks.withType(JavaCompile).configureEach {

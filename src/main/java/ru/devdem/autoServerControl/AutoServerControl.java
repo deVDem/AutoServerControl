@@ -3,8 +3,10 @@ package ru.devdem.autoServerControl;
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
+import com.velocitypowered.api.event.EventTask;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
+import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.event.connection.PostLoginEvent;
 import com.velocitypowered.api.event.connection.PreLoginEvent;
 import com.velocitypowered.api.event.player.GameProfileRequestEvent;
@@ -56,7 +58,6 @@ public class AutoServerControl {
     public AutoServerControl(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
         this.server = server;
         this.logger = logger;
-        offlineModeClass = OfflineMode.getInstance(this);
         configsHandler = new ConfigsHandler(this, this.logger, dataDirectory, this.server);
         serverHandler = ConnectionServerHandler.getInstance(this);
     }
@@ -67,6 +68,7 @@ public class AutoServerControl {
     @Subscribe
     public void onProxyInit(ProxyInitializeEvent event) {
         reloadConfigs();
+        offlineModeClass = OfflineMode.getInstance(this);
         registerCommands();
         logger.info("AutoServerControl загружен!");
     }
@@ -104,13 +106,25 @@ public class AutoServerControl {
     }
 
     @Subscribe
-    public void onPreLogin(PreLoginEvent event) {
-        offlineModeClass.onPreLogin(event);
+    public EventTask onPreLogin(PreLoginEvent event) {
+        return EventTask.async(() -> {
+            offlineModeClass.onPreLogin(event);
+
+        });
     }
 
     @Subscribe
-    public void onGameProfileRequest(GameProfileRequestEvent event) {
-        offlineModeClass.onGameProfileRequest(event);
+    public EventTask onGameProfileRequest(GameProfileRequestEvent event) {
+        return EventTask.async(() -> {
+            offlineModeClass.onGameProfileRequest(event);
+        });
+    }
+
+    @Subscribe
+    public EventTask onLogin(LoginEvent event) {
+        return EventTask.async(() -> {
+            offlineModeClass.onLoginEvent(event);
+        });
     }
 
     @Subscribe

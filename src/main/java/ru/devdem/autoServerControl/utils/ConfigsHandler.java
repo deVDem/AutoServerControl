@@ -5,7 +5,6 @@ import org.slf4j.Logger;
 import org.yaml.snakeyaml.Yaml;
 import ru.devdem.autoServerControl.AutoServerControl;
 import ru.devdem.autoServerControl.classes.configuredServer;
-import ru.devdem.autoServerControl.functions.OfflineMode;
 
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -20,26 +19,31 @@ public class ConfigsHandler {
     private final Path dataDirectory;
     private final ProxyServer server;
 
-    private final OfflineMode offlineModeclass;
-
     public ConfigsHandler(AutoServerControl plugin, Logger logger, Path dataDirectory, ProxyServer server) {
         this.plugin = plugin;
         this.logger = logger;
         this.dataDirectory = dataDirectory;
         this.server = server;
-        offlineModeclass = OfflineMode.getInstance();
     }
 
     public void reloadConfigs() {
         createDefaultConfig();
         loadServers();
-        loadOnlineUsers();
+        loadSQLConfig();
     }
 
     private void createDefaultConfig() {
         try {
             if (!Files.exists(dataDirectory)) {
                 Files.createDirectories(dataDirectory);
+            }
+
+            Path configPath = dataDirectory.resolve("config.yml");
+            if (!Files.exists(configPath)) {
+                try (InputStream in = getClass().getClassLoader().getResourceAsStream("config.yml")) {
+                    Files.copy(in, configPath);
+                    logger.info("Создан config.yml");
+                }
             }
 
             Path serversPath = dataDirectory.resolve("servers.yml");
@@ -49,18 +53,34 @@ public class ConfigsHandler {
                     logger.info("Создан servers.yml");
                 }
             }
-
-            Path usersPath = dataDirectory.resolve("onlineUsers.yml");
-            if (!Files.exists(usersPath)) {
-                try (InputStream in = getClass().getClassLoader().getResourceAsStream("onlineUsers.yml")) {
-                    Files.copy(in, usersPath);
-                    logger.info("Создан onlineUsers.yml");
-                }
-            }
         } catch (Exception e) {
             logger.error("Ошибка создания конфига", e);
         }
     }
+
+    public void loadSQLConfig() {
+        try {
+            Path configPath = dataDirectory.resolve("config.yml");
+
+            Yaml yaml = new Yaml();
+            Map<String, Object> data = yaml.load(Files.newInputStream(configPath));
+            Map<String, Object> mysql = (Map<String, Object>) data.get("mysql");
+
+            String host = (String) mysql.getOrDefault("host", "127.0.0.1");
+            int port = (int) mysql.getOrDefault("port", 3306);
+            String database = (String) mysql.getOrDefault("database", "velocity_users");
+            String username = (String) mysql.getOrDefault("username", "root");
+            String password = (String) mysql.getOrDefault("password", "");
+            boolean useSSL = (boolean) mysql.getOrDefault("useSSL", false);
+            DatabaseManager.getInstance(host, port, database, username, password);
+            logger.info("MySQL config загружен");
+
+
+        } catch (Exception e) {
+            logger.error("Ошибка загрузки config.yml: ", e);
+        }
+    }
+
 
     private void loadServers() {
         try {
@@ -93,26 +113,6 @@ public class ConfigsHandler {
 
         } catch (Exception e) {
             logger.error("Ошибка загрузки конфига с серверами", e);
-        }
-    }
-
-    private void loadOnlineUsers() {
-        try {
-            Path usersPath = dataDirectory.resolve("onlineUsers.yml");
-            Set<String> onlineUsers = new HashSet<>();
-
-            Yaml yaml = new Yaml();
-            Map<String, Object> data = yaml.load(Files.newInputStream(usersPath));
-            List<String> usersSection = (List<String>) data.get("onlineUsers");
-
-            if (usersSection != null) {
-                onlineUsers.addAll(usersSection);
-            }
-            offlineModeclass.updateOnlineUsers(onlineUsers);
-            logger.info("Загружено {} online users", onlineUsers.size());
-
-        } catch (Exception e) {
-            logger.error("Ошибка загрузки конфига с онлайн пользователями", e);
         }
     }
 
