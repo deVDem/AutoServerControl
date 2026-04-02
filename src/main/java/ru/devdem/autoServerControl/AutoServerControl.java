@@ -140,6 +140,7 @@ public class AutoServerControl {
         Component broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e отключился");
         server.getAllPlayers().forEach(p -> p.sendMessage(broadcastMsg));
         serverHandler.onDisconnectEvent();
+        offlineModeClass.onDisconnectEvent(event);
     }
 
     @Subscribe

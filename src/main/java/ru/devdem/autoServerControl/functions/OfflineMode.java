@@ -1,10 +1,12 @@
 package ru.devdem.autoServerControl.functions;
 
+import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.event.connection.PreLoginEvent;
 import com.velocitypowered.api.event.player.GameProfileRequestEvent;
 import com.velocitypowered.api.util.GameProfile;
 import com.velocitypowered.api.util.UuidUtils;
+import net.kyori.adventure.text.Component;
 import org.geysermc.geyser.api.GeyserApi;
 import org.geysermc.geyser.api.connection.GeyserConnection;
 import org.slf4j.Logger;
@@ -31,10 +33,6 @@ public class OfflineMode {
         databaseManager = DatabaseManager.getInstance();
     }
 
-    public static OfflineMode getInstance() {
-        return Objects.requireNonNullElseGet(instance, () -> new OfflineMode(null));
-    }
-
     public static OfflineMode getInstance(AutoServerControl plugin) {
         if (instance == null) {
             return new OfflineMode(plugin);
@@ -44,10 +42,19 @@ public class OfflineMode {
         }
     }
 
+    private boolean isBedrock(String username) {
+        for (GeyserConnection con : GeyserApi.api().onlineConnections()) {
+            if (con.bedrockUsername().equalsIgnoreCase(username)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
     public void onPreLogin(PreLoginEvent event) {
         String username = event.getUsername();
-        GeyserConnection conng = GeyserApi.api().connectionByUuid(event.getUniqueId()); // below 1.19.2 it's null
-        boolean isBedrock = conng != null;
+        boolean isBedrock = isBedrock(username);
         logger.info("onPreLogin: {} isBedrock: {}", username, isBedrock);
 
         DevdemUser c_user = SearchConnectingUser(username);
@@ -86,7 +93,6 @@ public class OfflineMode {
             if (rs.next()) { // игрок найден в бд
                 logger.info("Игрок {} найден в БД", username);
                 user = DevdemUser.fromResultSet(rs);
-                connectingPlayers.add(user);
                 if (user.getType() == DevdemUser.UserType.OFFLINE) { // если в БД уже написано, что он оффлайн - так и делаем
                     event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
                 }
@@ -114,6 +120,7 @@ public class OfflineMode {
                 if (resultSet.next()) {
                     user = DevdemUser.fromResultSet(resultSet);
                 }
+                user.canyouagain = true;
                 connectingPlayers.add(user);
             }
 
@@ -156,8 +163,25 @@ public class OfflineMode {
             }
             GameProfile offlineProfile = new GameProfile(offlineUuid, username, Collections.emptyList());
             event.setGameProfile(offlineProfile);
+            user.setUuid(offlineUuid.toString());
+            user.updateUser();
             logger.info("Используем оффлайн режим для {}", username);
         }
+        if (user.getType() == DevdemUser.UserType.BEDROCK) {
+            if (user.getUuid() == null) {
+                user.setUuid(event.getGameProfile().getUndashedId());
+                user.updateUser();
+            } else {
+                if (!Objects.equals(user.getUuid(), event.getGameProfile().getUndashedId())) {
+                    var optionalPlayer = plugin.server.getPlayer(UUID.fromString(event.getGameProfile().getUndashedId()));
+                    optionalPlayer.ifPresent(player -> player.disconnect(Component.text("ID не соответствует.")));
+                }
+            }
+        }
+    }
+
+    public void onDisconnectEvent(DisconnectEvent event) {
+
     }
 
     private DevdemUser SearchConnectingUser(String username) {

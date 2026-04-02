@@ -16,6 +16,7 @@ public class DatabaseManager {
     private final String password;
 
     private static DatabaseManager instance;
+    private boolean connected;
 
     private DatabaseManager(String host, int port, String database, String username, String password) {
         this.host = host;
@@ -56,12 +57,16 @@ public class DatabaseManager {
     }
 
     public Connection getConnection() throws SQLException {
-        connect();
+        if (!connected) {
+            connect();
+            connected = true;
+        }
         return dataSource.getConnection();
     }
 
     public void disconnect() {
         if (dataSource != null) {
+            connected = false;
             dataSource.close();
         }
     }
