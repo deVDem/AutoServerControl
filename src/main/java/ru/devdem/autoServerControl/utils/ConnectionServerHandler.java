@@ -184,6 +184,9 @@ public class ConnectionServerHandler {
         if (event.getPreviousServer() == null) {
             return;
         }
+        if (Objects.equals(event.getPreviousServer().getServerInfo().getName(), "auth")) {
+            return;
+        }
         configuredServer current = servers.get(serverName);
         Component broadcastMsg;
         if (serverName.equalsIgnoreCase("lobby")) {

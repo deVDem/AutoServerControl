@@ -1,6 +1,5 @@
 package ru.devdem.autoServerControl.utils;
 
-import java.util.Locale;
 import java.util.Set;
 
 public class Utils {
@@ -13,8 +12,5 @@ public class Utils {
             ans = ans.substring(2);
         }
         return ans;
-    }
-    public static String normalizeUsername(String username) {
-        return username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
     }
 }
