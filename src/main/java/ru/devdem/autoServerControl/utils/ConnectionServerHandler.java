@@ -202,8 +202,7 @@ public class ConnectionServerHandler {
             configuredServer prev = servers.get(prevName);
 
             if (prev != null) {
-                RegisteredServer srv = event.getPreviousServer();
-                if (srv.getPlayersConnected().isEmpty()) {
+                if (prev.isTrueEmpty(event.getPreviousServer())) {
                     prev.scheduleShutdown(plugin);
                     logger.info("Запускаем таймер на {}", prev.name);
                 }
