@@ -1,14 +1,12 @@
 package ru.devdem.autoServerControl.classes;
 
 import com.velocitypowered.api.proxy.ProxyServer;
-import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.velocitypowered.api.scheduler.ScheduledTask;
 import ru.devdem.autoServerControl.AutoServerControl;
 import ru.devdem.autoServerControl.utils.ConnectionServerHandler;
 
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class configuredServer {
 
@@ -66,10 +64,16 @@ public class configuredServer {
         shutdownTask = proxy.getScheduler()
                 .buildTask(plugin, () -> {
                     proxy.getServer(name).ifPresent(srv -> {
-                        if (isTrueEmpty(srv)) {
-                            plugin.getLogger().info("Выключаем сервер: {}", name);
-                            serverHandler.stopServer(name);
-                            status = StatusEnum.SHUTDOWN;
+                        if (srv.getPlayersConnected().isEmpty()) {
+                            srv.ping().whenComplete((ping, error) -> {
+                                if (error != null) { // сервер включен, тогда выключаем.
+                                    plugin.getLogger().info("Выключаем сервер: {}", name);
+                                    serverHandler.stopServer(name);
+                                    status = StatusEnum.SHUTDOWN;
+                                } else {
+                                    plugin.getLogger().info("Пытались выключить {}, но он был выключен.", name);
+                                }
+                            });
                         }
                     });
                 })
@@ -88,21 +92,5 @@ public class configuredServer {
             shutdownTask.cancel();
             shutdownTask = null;
         }
-    }
-
-    public boolean isTrueEmpty(RegisteredServer srv) {
-        AtomicBoolean result = new AtomicBoolean(false);
-        srv.ping().whenComplete((ping, error) -> {
-            if (error != null) {
-                if (ping.getPlayers().isPresent() && ping.getPlayers().get().getOnline() == 0) {
-                    result.set(true); // сервер пустой
-                } else {
-                    result.set(false); // сервер не пустой
-                }
-            } else {
-                result.set(false); // сервер выключен
-            }
-        });
-        return result.get();
     }
 }
