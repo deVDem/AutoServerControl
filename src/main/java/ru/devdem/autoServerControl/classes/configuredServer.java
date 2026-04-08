@@ -65,9 +65,15 @@ public class configuredServer {
                 .buildTask(plugin, () -> {
                     proxy.getServer(name).ifPresent(srv -> {
                         if (srv.getPlayersConnected().isEmpty()) {
-                            plugin.getLogger().info("Выключаем сервер: {}", name);
-                            serverHandler.stopServer(name);
-                            status = StatusEnum.SHUTDOWN;
+                            srv.ping().whenComplete((ping, error) -> {
+                                if (error != null) { // сервер включен, тогда выключаем.
+                                    plugin.getLogger().info("Выключаем сервер: {}", name);
+                                    serverHandler.stopServer(name);
+                                    status = StatusEnum.SHUTDOWN;
+                                } else {
+                                    plugin.getLogger().info("Пытались выключить {}, но он был выключен.", name);
+                                }
+                            });
                         }
                     });
                 })
