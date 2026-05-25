@@ -235,6 +235,13 @@ public class ConnectionServerHandler {
             return;
         }
         configuredServer current = servers.get(serverName);
+
+        scheduleShutdownIfPreviousServerIsEmpty(event);
+
+        if (serverName.equalsIgnoreCase("auth")) {
+            return;
+        }
+
         Component broadcastMsg;
         if (serverName.equalsIgnoreCase("lobby")) {
             broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e вернулся в лобби");
@@ -245,20 +252,6 @@ public class ConnectionServerHandler {
         }
         server.getAllPlayers().forEach(p -> p.sendMessage(broadcastMsg));
 
-        if (event.getPreviousServer() != null) {
-            String prevName = event.getPreviousServer().getServerInfo().getName();
-
-            configuredServer prev = servers.get(prevName);
-
-            if (prev != null) {
-                RegisteredServer srv = event.getPreviousServer();
-                if (srv.getPlayersConnected().isEmpty()) {
-                    prev.scheduleShutdown(plugin);
-                    logger.info("Запускаем таймер на {}", prev.name);
-                }
-            }
-        }
-
         event.getPlayer().getCurrentServer().ifPresent(srv -> {
             String name = srv.getServerInfo().getName();
 
@@ -268,6 +261,23 @@ public class ConnectionServerHandler {
                 logger.info("Отмена выключения сервера: {}", name);
             }
         });
+    }
+
+    private void scheduleShutdownIfPreviousServerIsEmpty(ServerPostConnectEvent event) {
+        if (event.getPreviousServer() == null) {
+            return;
+        }
+
+        String prevName = event.getPreviousServer().getServerInfo().getName();
+        configuredServer prev = servers.get(prevName);
+
+        if (prev != null) {
+            RegisteredServer srv = event.getPreviousServer();
+            if (srv.getPlayersConnected().isEmpty()) {
+                prev.scheduleShutdown(plugin);
+                logger.info("Запускаем таймер на {}", prev.name);
+            }
+        }
     }
 
     // =========================
