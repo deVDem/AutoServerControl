@@ -69,37 +69,42 @@ public class AutoServerControl {
     public void onProxyInit(ProxyInitializeEvent event) {
         reloadConfigs();
         offlineModeClass = OfflineMode.getInstance(this);
-        registerCommands();
         logger.info("AutoServerControl загружен!");
     }
 
 
-    private final Set<CommandMeta> servercommands = new HashSet<>();
+    private final Set<CommandMeta> registeredCommands = new HashSet<>();
     private void registerCommands() {
         CommandManager manager = server.getCommandManager();
-        manager.register(manager.metaBuilder("ascreload")
-                        .aliases("areload")
-                        .build(),
-                new ReloadCommand(this)
-        );
 
-        for (CommandMeta meta : servercommands) {
+        for (CommandMeta meta : registeredCommands) {
             manager.unregister(meta);
         }
+        registeredCommands.clear();
+
+        CommandMeta reloadMeta = manager.metaBuilder("ascreload")
+                        .aliases("areload")
+                        .build();
+        manager.register(reloadMeta,
+                new ReloadCommand(this)
+        );
+        registeredCommands.add(reloadMeta);
 
         for (configuredServer srv : serverHandler.servers.values()) {
             CommandMeta commandMeta =  manager.metaBuilder(srv.name)
                             .aliases(srv.aliases.toArray(new String[0]))
                             .build();
             manager.register(commandMeta, new ServerAliasCommand(this, srv));
-            servercommands.add(commandMeta);
+            registeredCommands.add(commandMeta);
             logger.info("Добавлены команды {} для {}", Utils.getAliasesFromSet(srv.aliases), srv.name);
         }
-        manager.register(manager.metaBuilder("lobby")
+        CommandMeta lobbyMeta = manager.metaBuilder("lobby")
                         .aliases("l", "hub")
-                        .build(),
+                        .build();
+        manager.register(lobbyMeta,
                 new LobbyCommand(server)
         );
+        registeredCommands.add(lobbyMeta);
 
 
         logger.info("Команды загружены.");

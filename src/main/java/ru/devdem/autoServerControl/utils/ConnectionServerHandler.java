@@ -14,21 +14,30 @@ import org.slf4j.Logger;
 import ru.devdem.autoServerControl.AutoServerControl;
 import ru.devdem.autoServerControl.classes.configuredServer;
 
-import java.util.*;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class ConnectionServerHandler {
+
+    private static final int PING_ATTEMPTS = 10;
+    private static final int SSH_TIMEOUT_MS = 10_000;
 
     public AutoServerControl plugin;
     private final Logger logger;
     private final ProxyServer server;
 
-    public Map<String, configuredServer> servers = new HashMap<>();
+    public Map<String, configuredServer> servers = new ConcurrentHashMap<>();
 
-    private final Set<String> startingServers = ConcurrentHashMap.newKeySet();
     private final Set<UUID> connectingPlayers = ConcurrentHashMap.newKeySet();
-    private final Set<UUID> startingPlayers = ConcurrentHashMap.newKeySet();
+    private final Map<String, Set<UUID>> waitingPlayersByServer = new ConcurrentHashMap<>();
+    private final ExecutorService sshExecutor = Executors.newCachedThreadPool();
 
     private static ConnectionServerHandler instance;
 
@@ -39,9 +48,9 @@ public class ConnectionServerHandler {
         server = plugin.server;
     }
 
-
     public void updateServers(Map<String, configuredServer> serversMap) {
-        servers = serversMap;
+        servers = new ConcurrentHashMap<>(serversMap);
+        waitingPlayersByServer.keySet().removeIf(serverName -> !servers.containsKey(serverName));
         checkAllServers();
     }
 
@@ -62,6 +71,7 @@ public class ConnectionServerHandler {
                     srv.scheduleShutdown(plugin);
                 } else {
                     srv.cancelShutdown();
+                    srv.status = configuredServer.StatusEnum.ONLINE;
                 }
             });
         }
@@ -70,45 +80,84 @@ public class ConnectionServerHandler {
     // =========================
     // АВТОПОДКЛЮЧЕНИЕ
     // =========================
-    private void waitAndConnect(Player player, RegisteredServer target, String serverName) {
+    private void waitAndConnect(RegisteredServer target, String serverName) {
         server.getScheduler().buildTask(plugin, new Runnable() {
             int attempts = 0;
             boolean done = false;
 
             @Override
             public void run() {
-
                 if (done) return;
 
                 attempts++;
 
                 target.ping().whenComplete((ping, error) -> {
                     if (done) return;
-                    if (error == null) {
-                        if (ping.getPlayers().isPresent() && ping.getPlayers().get().getMax() > 0) {
-                            player.sendMessage(Component.text("§aСервер запущен!"));
-                            connectingPlayers.add(player.getUniqueId());
-                            player.createConnectionRequest(target).fireAndForget();
-                            servers.get(serverName).scheduleShutdown(plugin);
 
-                            startingServers.remove(serverName);
-                            servers.get(serverName).status = configuredServer.StatusEnum.ONLINE;
-                            done = true;
-                            startingPlayers.remove(player.getUniqueId());
+                    if (error == null && ping.getPlayers().isPresent() && ping.getPlayers().get().getMax() > 0) {
+                        configuredServer configured = servers.get(serverName);
+                        if (configured != null) {
+                            configured.status = configuredServer.StatusEnum.ONLINE;
                         }
-                    } else if (attempts >= 10) {
-
-                        player.sendMessage(Component.text("§cСервер не запустился :("));
-                        servers.get(serverName).status = configuredServer.StatusEnum.ERROR;
-                        startingServers.remove(serverName);
+                        connectWaitingPlayers(serverName, target, Component.text("§aСервер запущен!"));
                         done = true;
-                        startingPlayers.remove(player.getUniqueId());
+                    } else if (attempts >= PING_ATTEMPTS) {
+                        configuredServer configured = servers.get(serverName);
+                        if (configured != null) {
+                            configured.status = configuredServer.StatusEnum.ERROR;
+                        }
+                        failWaitingPlayers(serverName, Component.text("§cСервер не запустился :("));
+                        done = true;
                     }
                 });
             }
         }).repeat(10, TimeUnit.SECONDS).schedule();
     }
 
+    private void addWaitingPlayer(String serverName, Player player) {
+        waitingPlayersByServer
+                .computeIfAbsent(serverName, key -> ConcurrentHashMap.newKeySet())
+                .add(player.getUniqueId());
+    }
+
+    private boolean isWaitingForAnyServer(UUID playerId) {
+        for (Set<UUID> waitingPlayers : waitingPlayersByServer.values()) {
+            if (waitingPlayers.contains(playerId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void removeWaitingPlayer(UUID playerId) {
+        waitingPlayersByServer.values().forEach(waitingPlayers -> waitingPlayers.remove(playerId));
+    }
+
+    private void connectWaitingPlayers(String serverName, RegisteredServer target, Component message) {
+        Set<UUID> waitingPlayers = waitingPlayersByServer.remove(serverName);
+        if (waitingPlayers == null || waitingPlayers.isEmpty()) {
+            return;
+        }
+
+        for (UUID playerId : waitingPlayers) {
+            server.getPlayer(playerId).ifPresent(player -> {
+                player.sendMessage(message);
+                connectingPlayers.add(player.getUniqueId());
+                player.createConnectionRequest(target).fireAndForget();
+            });
+        }
+    }
+
+    private void failWaitingPlayers(String serverName, Component message) {
+        Set<UUID> waitingPlayers = waitingPlayersByServer.remove(serverName);
+        if (waitingPlayers == null || waitingPlayers.isEmpty()) {
+            return;
+        }
+
+        for (UUID playerId : waitingPlayers) {
+            server.getPlayer(playerId).ifPresent(player -> player.sendMessage(message));
+        }
+    }
 
     public void onDisconnectEvent() {
         checkAllServers();
@@ -116,12 +165,10 @@ public class ConnectionServerHandler {
 
     public void onServerPreConnect(ServerPreConnectEvent event) {
         Player player = event.getPlayer();
-
         UUID playerId = player.getUniqueId();
 
-
-        // защита от рекурсии
-        if (connectingPlayers.remove(player.getUniqueId())) {
+        // защита от рекурсии после createConnectionRequest()
+        if (connectingPlayers.remove(playerId)) {
             return;
         }
 
@@ -140,42 +187,39 @@ public class ConnectionServerHandler {
         configuredServer srv = servers.get(serverName);
         if (srv == null) return;
 
-
         if (srv.status == configuredServer.StatusEnum.STARTING) {
-            player.sendMessage(Component.text("§eСервер уже запускается..."));
+            addWaitingPlayer(serverName, player);
+            player.sendMessage(Component.text("§eСервер уже запускается. Подключим вас автоматически."));
             event.setResult(ServerPreConnectEvent.ServerResult.denied());
             return;
         }
 
-        // игрок уже запускает сервер
-        if (startingPlayers.contains(playerId)) {
-            player.sendMessage(Component.text("§cВы уже запускаете сервер, дождитесь подключения."));
+        if (isWaitingForAnyServer(playerId)) {
+            player.sendMessage(Component.text("§cВы уже ожидаете запуск сервера, дождитесь подключения."));
             event.setResult(ServerPreConnectEvent.ServerResult.denied());
             return;
         }
 
         event.setResult(ServerPreConnectEvent.ServerResult.denied());
         player.sendMessage(Component.text("§7Проверка сервера..."));
-        startingPlayers.add(playerId);
+        addWaitingPlayer(serverName, player);
 
         target.ping().whenComplete((ping, error) -> {
             if (error != null) {
-                startingServers.add(serverName);
                 srv.status = configuredServer.StatusEnum.STARTING;
                 player.sendMessage(Component.text("§6Сервер запускается..."));
                 startServer(serverName);
-                waitAndConnect(player, target, serverName);
-                event.setResult(ServerPreConnectEvent.ServerResult.denied());
+                waitAndConnect(target, serverName);
             } else {
-                connectingPlayers.add(player.getUniqueId());
+                srv.status = configuredServer.StatusEnum.ONLINE;
+                connectingPlayers.add(playerId);
                 player.createConnectionRequest(target).fireAndForget();
-                startingPlayers.remove(playerId);
+                removeWaitingPlayer(playerId);
             }
         });
     }
 
     public void onServerPostConnectedEvent(ServerPostConnectEvent event) {
-
         Player player = event.getPlayer();
         Optional<ServerConnection> newServer = player.getCurrentServer();
         String serverName;
@@ -191,11 +235,13 @@ public class ConnectionServerHandler {
         Component broadcastMsg;
         if (serverName.equalsIgnoreCase("lobby")) {
             broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e вернулся в лобби");
-        } else {
+        } else if (current != null) {
             broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e отправился в " + current.displayName);
+        } else {
+            broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e перешел на " + serverName);
         }
         server.getAllPlayers().forEach(p -> p.sendMessage(broadcastMsg));
-        // === ИГРОК УШЁЛ С СЕРВЕРА ===
+
         if (event.getPreviousServer() != null) {
             String prevName = event.getPreviousServer().getServerInfo().getName();
 
@@ -210,12 +256,12 @@ public class ConnectionServerHandler {
             }
         }
 
-        // === ИГРОК ЗАШЁЛ НА СЕРВЕР ===
         event.getPlayer().getCurrentServer().ifPresent(srv -> {
             String name = srv.getServerInfo().getName();
 
             if (current != null) {
                 current.cancelShutdown();
+                current.status = configuredServer.StatusEnum.ONLINE;
                 logger.info("Отмена выключения сервера: {}", name);
             }
         });
@@ -225,7 +271,6 @@ public class ConnectionServerHandler {
     // АВТО ВЫКЛЮЧЕНИЕ
     // =========================
     public void startServer(String name) {
-
         configuredServer srv = servers.get(name);
         if (srv == null) return;
 
@@ -233,7 +278,6 @@ public class ConnectionServerHandler {
     }
 
     public void stopServer(String name) {
-
         configuredServer srv = servers.get(name);
         if (srv == null) return;
 
@@ -241,32 +285,54 @@ public class ConnectionServerHandler {
     }
 
     private void executeSSH(configuredServer srv, boolean start) {
-
-        new Thread(() -> {
+        sshExecutor.execute(() -> {
+            Session session = null;
+            ChannelExec channel = null;
             try {
                 JSch jsch = new JSch();
 
-                Session session = jsch.getSession(srv.sshUser, srv.ip, 22);
+                session = jsch.getSession(srv.sshUser, srv.ip, 22);
                 session.setPassword(srv.sshPassword);
                 session.setConfig("StrictHostKeyChecking", "no");
-                session.connect();
+                session.connect(SSH_TIMEOUT_MS);
 
-                ChannelExec channel = (ChannelExec) session.openChannel("exec");
+                channel = (ChannelExec) session.openChannel("exec");
 
                 String cmd = (start ? "systemctl start " : "systemctl stop ") + srv.service;
                 channel.setCommand(cmd);
 
-                channel.connect();
+                channel.connect(SSH_TIMEOUT_MS);
+
+                while (!channel.isClosed()) {
+                    Thread.sleep(100);
+                }
+
+                int exitStatus = channel.getExitStatus();
+                if (exitStatus != 0) {
+                    logger.error("SSH command for {} finished with exit code {}", srv.name, exitStatus);
+                    if (start) {
+                        failWaitingPlayers(srv.name, Component.text("§cНе удалось отправить команду запуска сервера."));
+                        srv.status = configuredServer.StatusEnum.ERROR;
+                    }
+                    return;
+                }
 
                 logger.info("{}: {}", start ? "Запуск" : "Остановка", srv.name);
 
-                channel.disconnect();
-                session.disconnect();
-
             } catch (Exception e) {
                 logger.error("SSH ошибка: {}", srv.name, e);
+                if (start) {
+                    failWaitingPlayers(srv.name, Component.text("§cSSH ошибка при запуске сервера."));
+                    srv.status = configuredServer.StatusEnum.ERROR;
+                }
+            } finally {
+                if (channel != null) {
+                    channel.disconnect();
+                }
+                if (session != null) {
+                    session.disconnect();
+                }
             }
-        }).start();
+        });
     }
-
 }

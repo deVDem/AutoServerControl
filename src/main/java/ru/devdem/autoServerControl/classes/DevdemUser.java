@@ -1,5 +1,7 @@
 package ru.devdem.autoServerControl.classes;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.devdem.autoServerControl.utils.DatabaseManager;
 
 import java.sql.Connection;
@@ -10,6 +12,8 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 public class DevdemUser {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(DevdemUser.class);
 
     private int id;
     private String username;
@@ -146,7 +150,7 @@ public class DevdemUser {
             stmtup.setInt(7, id);
             stmtup.executeUpdate();
         } catch (SQLException e) {
-
+            LOGGER.error("Не удалось обновить пользователя {}", username, e);
         }
     }
 

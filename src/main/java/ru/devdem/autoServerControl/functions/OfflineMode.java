@@ -17,6 +17,7 @@ import ru.devdem.autoServerControl.utils.DatabaseManager;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class OfflineMode {
 
@@ -24,7 +25,7 @@ public class OfflineMode {
     private AutoServerControl plugin;
     private final Logger logger;
     private final DatabaseManager databaseManager;
-    private final Set<DevdemUser> connectingPlayers = new HashSet<>();
+    private final Set<DevdemUser> connectingPlayers = ConcurrentHashMap.newKeySet();
 
     private OfflineMode(AutoServerControl plugin) {
         instance = this;
@@ -156,7 +157,7 @@ public class OfflineMode {
         if (user == null) return;
         if (user.getType() == DevdemUser.UserType.OFFLINE) {
             UUID offlineUuid;
-            if (user.getUuid() == null) {
+            if (user.getUuid() != null) {
                 offlineUuid = UuidUtils.fromUndashed(user.getUuid());
             } else {
                 offlineUuid = UuidUtils.generateOfflinePlayerUuid(username);
