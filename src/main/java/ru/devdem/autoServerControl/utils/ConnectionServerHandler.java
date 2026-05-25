@@ -160,7 +160,10 @@ public class ConnectionServerHandler {
     }
 
     public void onDisconnectEvent() {
-        checkAllServers();
+        server.getScheduler()
+                .buildTask(plugin, this::checkAllServers)
+                .delay(1, TimeUnit.SECONDS)
+                .schedule();
     }
 
     public void onServerPreConnect(ServerPreConnectEvent event) {
