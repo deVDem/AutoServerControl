@@ -132,7 +132,7 @@ public class DevdemUser {
         }
         try (Connection conn = manager.getConnection()) {
             var stmtup = conn.prepareStatement(
-                    "UPDATE `devdem_users` SET" +
+                    "UPDATE `users` SET" +
                             "`username`=?," +
                             "`type`=?," +
                             "`uuid`=?," +

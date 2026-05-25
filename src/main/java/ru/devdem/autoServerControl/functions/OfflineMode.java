@@ -72,7 +72,7 @@ public class OfflineMode {
         try (Connection conn = databaseManager.getConnection()) {
             logger.info("Ищем {} в БД", username);
             var stmt = conn.prepareStatement(
-                    "SELECT * FROM `devdem_users` WHERE username = ?"
+                    "SELECT * FROM `users` WHERE username = ?"
             );
             stmt.setString(1, username);
             var rs = stmt.executeQuery(); // ищем сначала пользователя
@@ -102,7 +102,7 @@ public class OfflineMode {
                 // Но сначала надо записать, что он оффлайн:
                 logger.info("{} нет в БД, пишем его в базу.", username);
                 var stmtup = conn.prepareStatement(
-                        "INSERT INTO devdem_users (username, type, uuid, lastip, lastdate) " +
+                        "INSERT INTO users (username, type, uuid, lastip, lastdate) " +
                                 "VALUES (?, ?, ?, ?, NOW()) " +
                                 "ON DUPLICATE KEY UPDATE " +
                                 "type = VALUES(type), " +
@@ -115,7 +115,7 @@ public class OfflineMode {
                 stmtup.setString(4, ip);
                 stmtup.executeUpdate(); // надо теперь получить все данные из БД
 
-                var getDataSQL = conn.prepareStatement("SELECT * FROM `devdem_users` WHERE `username` = ?");
+                var getDataSQL = conn.prepareStatement("SELECT * FROM `users` WHERE `username` = ?");
                 getDataSQL.setString(1, username);
                 var resultSet = getDataSQL.executeQuery();
                 if (resultSet.next()) {
