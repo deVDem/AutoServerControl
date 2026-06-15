@@ -8,32 +8,70 @@ import ru.devdem.autoServerControl.utils.ConnectionServerHandler;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Описание управляемого игрового сервера из servers.yml.
+ */
 public class configuredServer {
 
+    /**
+     * Runtime-состояние сервера внутри плагина.
+     */
     public enum StatusEnum {
+        /** Статус еще не определен. */
         NONE,
+
+        /** Сервер запускается через SSH и ожидает успешного ping. */
         STARTING,
+
+        /** Сервер отвечает и считается доступным для игроков. */
         ONLINE,
+
+        /** Сервер был остановлен плагином. */
         SHUTDOWN,
+
+        /** Сервер пустой, запланировано выключение. */
         AWAITING,
+
+        /** Последняя операция запуска завершилась ошибкой. */
         ERROR
     }
 
+    /** Velocity proxy, через который планируются задачи и ищутся RegisteredServer. */
     private final ProxyServer proxy;
 
+    /** IP-адрес машины, на которой доступен SSH и игровой сервер. */
     public final String ip;
+
+    /** Имя сервера в Velocity и ключ в servers.yml. */
     public final String name;
+
+    /** Имя systemd-сервиса, которым управляет SSH-команда. */
     public final String service;
+
+    /** Отображаемое имя сервера для сообщений игрокам. */
     public final String displayName;
+
+    /** SSH-пользователь для запуска и остановки сервиса. */
     public final String sshUser;
+
+    /** SSH-пароль для запуска и остановки сервиса. */
     public final String sshPassword;
+
+    /** Командные алиасы, которые телепортируют игрока на этот сервер. */
     public final Set<String> aliases;
 
+    /** Активная отложенная задача выключения, если сервер сейчас ожидает остановку. */
     private ScheduledTask shutdownTask;
+
+    /** Центральный обработчик, через который выполняется stopServer(). */
     private final ConnectionServerHandler serverHandler;
 
+    /** Текущее состояние сервера с точки зрения AutoServerControl. */
     public StatusEnum status = StatusEnum.NONE;
 
+    /**
+     * Создает объект конфигурации сервера из servers.yml.
+     */
     public configuredServer(ProxyServer proxy,
                             String ip,
                             String name,
@@ -51,14 +89,13 @@ public class configuredServer {
         this.sshUser = sshUser;
         this.sshPassword = sshPassword;
         this.aliases = aliases;
-        serverHandler = ConnectionServerHandler.getInstance(null); // я надеюсь, что Handler уже создан и он просто вернёт готовый
+        serverHandler = ConnectionServerHandler.getInstance(null);
     }
 
-    // =========================
-    // ЗАПЛАНИРОВАТЬ ВЫКЛЮЧЕНИЕ
-    // =========================
+    /**
+     * Ставит выключение сервера через 5 минут, если к моменту выполнения он все еще пустой.
+     */
     public void scheduleShutdown(AutoServerControl plugin) {
-
         cancelShutdown();
 
         shutdownTask = proxy.getScheduler()
@@ -78,9 +115,9 @@ public class configuredServer {
         status = StatusEnum.AWAITING;
     }
 
-    // =========================
-    // ОТМЕНА ВЫКЛЮЧЕНИЯ
-    // =========================
+    /**
+     * Отменяет запланированное выключение, если игрок снова зашел на сервер.
+     */
     public void cancelShutdown() {
         if (shutdownTask != null) {
             shutdownTask.cancel();

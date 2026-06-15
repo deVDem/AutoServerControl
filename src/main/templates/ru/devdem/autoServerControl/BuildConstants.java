@@ -1,7 +1,10 @@
 package ru.devdem.autoServerControl;
 
-// The constants are replaced before compilation
+/**
+ * Константы сборки, которые Gradle подставляет перед компиляцией.
+ */
 public class BuildConstants {
 
+    /** Версия плагина из build.gradle. */
     public static final String VERSION = "${version}";
 }

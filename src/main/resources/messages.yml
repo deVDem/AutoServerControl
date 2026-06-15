@@ -1,0 +1,19 @@
+# Сообщения поддерживают Minecraft color codes через символ §.
+# Доступные плейсхолдеры:
+# - {player}: ник игрока
+# - {server}: отображаемое имя сервера или его техническое имя
+
+# Игрок прошел auth и попал в lobby.
+player-join: "§eИгрок §f{player}§e подключился на сервер!"
+
+# Игрок отключился от proxy.
+player-disconnect: "§eИгрок §f{player}§e отключился"
+
+# Игрок вернулся в lobby с другого игрового сервера.
+player-return-lobby: "§eИгрок §f{player}§e вернулся в лобби"
+
+# Игрок перешел на настроенный сервер из servers.yml.
+player-switch-server: "§eИгрок §f{player}§e отправился в {server}"
+
+# Игрок перешел на сервер, которого нет в servers.yml.
+player-switch-unknown: "§eИгрок §f{player}§e перешел на {server}"

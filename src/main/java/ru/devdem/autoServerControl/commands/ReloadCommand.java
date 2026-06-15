@@ -6,19 +6,27 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import ru.devdem.autoServerControl.AutoServerControl;
 
+/**
+ * Команда /ascreload для перечитывания конфигов без перезапуска proxy.
+ */
 public class ReloadCommand implements SimpleCommand {
 
+    /** Главный класс плагина, через который вызывается reloadConfigs(). */
     private final AutoServerControl plugin;
 
+    /**
+     * Создает команду перезагрузки конфигов.
+     */
     public ReloadCommand(AutoServerControl plugin) {
         this.plugin = plugin;
     }
 
+    /**
+     * Перечитывает config.yml, servers.yml, messages.yml и перерегистрирует команды серверов.
+     */
     @Override
     public void execute(final Invocation invocation) {
         CommandSource source = invocation.source();
-        // Get the arguments after the command alias
-        String[] args = invocation.arguments();
 
         source.sendMessage(Component.text("Перезапуск конфигов..", NamedTextColor.YELLOW));
         plugin.reloadConfigs();
@@ -26,10 +34,9 @@ public class ReloadCommand implements SimpleCommand {
 
     }
 
-    // This method allows you to control who can execute the command.
-    // If the executor does not have the required permission,
-    // the execution of the command and the control of its autocompletion
-    // will be sent directly to the server on which the sender is located
+    /**
+     * Разрешает reload только источникам с правом devdem.reload.
+     */
     @Override
     public boolean hasPermission(final Invocation invocation) {
         return invocation.source().hasPermission("devdem.reload");

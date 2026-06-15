@@ -2,15 +2,18 @@ package ru.devdem.autoServerControl.utils;
 
 import java.util.Set;
 
+/**
+ * Небольшие вспомогательные методы, которые не привязаны к Velocity API.
+ */
 public class Utils {
+
+    /**
+     * Возвращает список алиасов в человекочитаемом виде для логов.
+     *
+     * @param aliases алиасы команды сервера
+     * @return строка вида "alias1, alias2"
+     */
     public static String getAliasesFromSet(Set<String> aliases) {
-        String ans = "";
-        for (String s : aliases) {
-            ans=ans.concat(", " + s);
-        }
-        if (ans.startsWith(", ")) {
-            ans = ans.substring(2);
-        }
-        return ans;
+        return String.join(", ", aliases);
     }
 }

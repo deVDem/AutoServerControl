@@ -19,14 +19,29 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Обрабатывает смешанный вход Java online/offline и Bedrock-игроков через Geyser.
+ */
 public class OfflineMode {
 
+    /** Singleton-экземпляр обработчика offline-mode логики. */
     private static OfflineMode instance;
+
+    /** Главный класс плагина; обновляется при повторном получении singleton. */
     private AutoServerControl plugin;
+
+    /** Логгер плагина. */
     private final Logger logger;
+
+    /** Менеджер MySQL-подключений. */
     private final DatabaseManager databaseManager;
+
+    /** Игроки, находящиеся между PreLogin/GameProfileRequest/Login фазами. */
     private final Set<DevdemUser> connectingPlayers = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Создает обработчик offline-mode логики.
+     */
     private OfflineMode(AutoServerControl plugin) {
         instance = this;
         this.plugin = plugin;
@@ -34,6 +49,9 @@ public class OfflineMode {
         databaseManager = DatabaseManager.getInstance();
     }
 
+    /**
+     * Возвращает singleton-экземпляр обработчика.
+     */
     public static OfflineMode getInstance(AutoServerControl plugin) {
         if (instance == null) {
             return new OfflineMode(plugin);
@@ -43,6 +61,9 @@ public class OfflineMode {
         }
     }
 
+    /**
+     * Проверяет, пришел ли игрок через Geyser как Bedrock-клиент.
+     */
     private boolean isBedrock(String username) {
         for (GeyserConnection con : GeyserApi.api().onlineConnections()) {
             if (con.bedrockUsername().equalsIgnoreCase(username)) {
@@ -53,17 +74,20 @@ public class OfflineMode {
     }
 
 
+    /**
+     * Ранняя фаза входа: решает, какой тип профиля нужен игроку, и создает запись в БД.
+     */
     public void onPreLogin(PreLoginEvent event) {
         String username = event.getUsername();
         boolean isBedrock = isBedrock(username);
         logger.info("onPreLogin: {} isBedrock: {}", username, isBedrock);
 
-        DevdemUser c_user = SearchConnectingUser(username);
-        if (c_user != null && c_user.canyouagain) {
-            // обработчик если мы уже игрока попросили перезайти и пробуем с ним провернуть оффлайн мод
-            c_user.setType(DevdemUser.UserType.OFFLINE);
-            c_user.canyouagain = false;
-            c_user.updateUser();
+        DevdemUser connectingUser = findConnectingUser(username);
+        if (connectingUser != null && connectingUser.shouldRetryInOfflineMode) {
+            // Игрок уже был добавлен в базу и заходит повторно, теперь можно форсировать offline-mode.
+            connectingUser.setType(DevdemUser.UserType.OFFLINE);
+            connectingUser.shouldRetryInOfflineMode = false;
+            connectingUser.updateUser();
             event.setResult(PreLoginEvent.PreLoginComponentResult.forceOfflineMode());
             logger.info("Форсируем Offline мод для {}", username);
             return;
@@ -81,13 +105,13 @@ public class OfflineMode {
             if (isBedrock) user.setType(DevdemUser.UserType.BEDROCK);
             else user.setType(DevdemUser.UserType.ONLINE);
             user.setUsername(username);
-            user.canyouagain = false;
+            user.shouldRetryInOfflineMode = false;
             String ip = "unknown";
             if (event.getConnection().getRemoteAddress() != null) {
                 ip = event.getConnection()
                         .getRemoteAddress()
                         .getAddress()
-                        .getHostAddress(); // какое спагетти..
+                        .getHostAddress();
             }
             user.setLastIp(ip); // делаем полу-пустышку чтобы удобнее было использовать после.
 
@@ -121,7 +145,7 @@ public class OfflineMode {
                 if (resultSet.next()) {
                     user = DevdemUser.fromResultSet(resultSet);
                 }
-                user.canyouagain = true;
+                user.shouldRetryInOfflineMode = true;
                 connectingPlayers.add(user);
             }
 
@@ -130,18 +154,21 @@ public class OfflineMode {
         }
     }
 
+    /**
+     * Финальная фаза входа: сохраняет UUID игрока и закрывает временное состояние connectingPlayers.
+     */
     public void onLoginEvent(LoginEvent event) {
         String username = event.getPlayer().getUsername();
-        DevdemUser user = SearchConnectingUser(username);
+        DevdemUser user = findConnectingUser(username);
         logger.info("onLoginEvent for {}", username);
         if (user != null) {
-            if (user.canyouagain) {
+            if (user.shouldRetryInOfflineMode) {
                 user.setType(DevdemUser.UserType.ONLINE);
-                user.canyouagain = false;
+                user.shouldRetryInOfflineMode = false;
                 user.updateUser();
             }
             if (user.getUuid() == null) {
-                user.setUuid(event.getPlayer().getGameProfile().getId().toString()); // колбаса
+                user.setUuid(event.getPlayer().getGameProfile().getId().toString());
                 user.updateUser();
             }
             connectingPlayers.remove(user);
@@ -149,11 +176,14 @@ public class OfflineMode {
     }
 
 
+    /**
+     * При необходимости подменяет GameProfile на offline UUID или проверяет Bedrock UUID.
+     */
     public void onGameProfileRequest(GameProfileRequestEvent event) {
         String username = event.getUsername();
         logger.info("onGameProfileRequest for {}", username);
         if (username == null) return;
-        DevdemUser user = SearchConnectingUser(username);
+        DevdemUser user = findConnectingUser(username);
         if (user == null) return;
         if (user.getType() == DevdemUser.UserType.OFFLINE) {
             UUID offlineUuid;
@@ -181,14 +211,20 @@ public class OfflineMode {
         }
     }
 
+    /**
+     * Зарезервировано под очистку состояния при отключении игрока.
+     */
     public void onDisconnectEvent(DisconnectEvent event) {
 
     }
 
-    private DevdemUser SearchConnectingUser(String username) {
-        for (DevdemUser p_user : connectingPlayers) {
-            if (Objects.equals(p_user.getUsername(), username)) {
-                return p_user;
+    /**
+     * Ищет временного пользователя по нику между фазами входа.
+     */
+    private DevdemUser findConnectingUser(String username) {
+        for (DevdemUser connectingUser : connectingPlayers) {
+            if (Objects.equals(connectingUser.getUsername(), username)) {
+                return connectingUser;
             }
         }
         return null;

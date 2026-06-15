@@ -6,14 +6,24 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import net.kyori.adventure.text.Component;
 
+/**
+ * Команда /lobby, /l и /hub для возврата игрока в лобби.
+ */
 public class LobbyCommand implements SimpleCommand {
 
+    /** Velocity proxy, через который ищется сервер lobby. */
     private final ProxyServer proxy;
 
+    /**
+     * Создает команду возврата в лобби.
+     */
     public LobbyCommand(ProxyServer server) {
         this.proxy = server;
     }
 
+    /**
+     * Выполняет команду и отправляет игрока на сервер lobby.
+     */
     @Override
     public void execute(Invocation invocation) {
         CommandSource source = invocation.source();
@@ -24,9 +34,7 @@ public class LobbyCommand implements SimpleCommand {
             return;
         }
 
-        // Получаем сервер
         proxy.getServer("lobby").ifPresentOrElse(server -> {
-            // Если уже на сервере — можно не телепортировать
             if (player.getCurrentServer()
                     .map(s -> s.getServerInfo().getName().equalsIgnoreCase("lobby"))
                     .orElse(false)) {
@@ -35,7 +43,6 @@ public class LobbyCommand implements SimpleCommand {
                 return;
             }
 
-            // Отправка
             player.createConnectionRequest(server).fireAndForget();
 
         }, () -> {

@@ -7,7 +7,6 @@ import com.velocitypowered.api.event.EventTask;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.LoginEvent;
-import com.velocitypowered.api.event.connection.PostLoginEvent;
 import com.velocitypowered.api.event.connection.PreLoginEvent;
 import com.velocitypowered.api.event.player.GameProfileRequestEvent;
 import com.velocitypowered.api.event.player.PlayerChatEvent;
@@ -32,28 +31,40 @@ import ru.devdem.autoServerControl.utils.Utils;
 import java.nio.file.Path;
 import java.util.*;
 
+/**
+ * Главная точка входа Velocity-плагина.
+ *
+ * Регистрирует команды, подключает обработчики событий и связывает конфиги с runtime-логикой.
+ */
 @Plugin(id = "autoservercontrol", name = "AutoServerControl", version = BuildConstants.VERSION, description = "Only for deVDem MC HUB", url = "devdem.ru/mc-hub", authors = {"deVDem"})
 public class AutoServerControl {
 
-    /*
-     * Известные баги.
-     *
-     * Было бы круче, чтобы после захода на сервер был титульник "Добро пожаловать в {serverName}" (можно использовать из serverTexts)
-     *
-     * */
-
+    /** Velocity proxy API. Используется для команд, игроков, серверов и рассылок. */
     public final ProxyServer server;
+
+    /** Логгер плагина. */
     private final Logger logger;
 
 
+    /**
+     * Возвращает логгер плагина для вспомогательных классов.
+     */
     public Logger getLogger() {
         return logger;
     }
 
+    /** Обработчик автозапуска, автоподключения и автоостановки игровых серверов. */
     public ConnectionServerHandler serverHandler;
+
+    /** Обработчик offline/online/bedrock логики входа. */
     public OfflineMode offlineModeClass;
+
+    /** Загрузчик config.yml, servers.yml и messages.yml. */
     public ConfigsHandler configsHandler;
 
+    /**
+     * Velocity создает плагин через DI и передает основные зависимости.
+     */
     @Inject
     public AutoServerControl(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
         this.server = server;
@@ -65,6 +76,9 @@ public class AutoServerControl {
     // =========================
     // ИНИЦИАЛИЗАЦИЯ
     // =========================
+    /**
+     * Загружает конфиги и runtime-обработчики после старта proxy.
+     */
     @Subscribe
     public void onProxyInit(ProxyInitializeEvent event) {
         reloadConfigs();
@@ -73,7 +87,12 @@ public class AutoServerControl {
     }
 
 
+    /** Метаданные команд, которые были зарегистрированы плагином и должны сниматься при reload. */
     private final Set<CommandMeta> registeredCommands = new HashSet<>();
+
+    /**
+     * Регистрирует команды плагина и серверные алиасы из servers.yml.
+     */
     private void registerCommands() {
         CommandManager manager = server.getCommandManager();
 
@@ -110,6 +129,9 @@ public class AutoServerControl {
         logger.info("Команды загружены.");
     }
 
+    /**
+     * Асинхронно обрабатывает раннюю фазу входа игрока.
+     */
     @Subscribe
     public EventTask onPreLogin(PreLoginEvent event) {
         return EventTask.async(() -> {
@@ -118,6 +140,9 @@ public class AutoServerControl {
         });
     }
 
+    /**
+     * Асинхронно подменяет профиль игрока, если нужен offline-mode UUID.
+     */
     @Subscribe
     public EventTask onGameProfileRequest(GameProfileRequestEvent event) {
         return EventTask.async(() -> {
@@ -125,6 +150,9 @@ public class AutoServerControl {
         });
     }
 
+    /**
+     * Асинхронно сохраняет финальные данные игрока после успешной авторизации.
+     */
     @Subscribe
     public EventTask onLogin(LoginEvent event) {
         return EventTask.async(() -> {
@@ -132,22 +160,24 @@ public class AutoServerControl {
         });
     }
 
-    @Subscribe
-    public void onPostLoginEvent(PostLoginEvent event) {
-        Player player = event.getPlayer();
-        Component broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e подключился на сервер!");
-        server.getAllPlayers().forEach(p -> p.sendMessage(broadcastMsg));
-    }
-
+    /**
+     * Рассылает сообщение об отключении и запускает проверку пустых серверов.
+     */
     @Subscribe
     public void onDisconnectEvent(DisconnectEvent event) {
         Player player = event.getPlayer();
-        Component broadcastMsg = Component.text("§eИгрок §f" + player.getUsername() + "§e отключился");
+        Component broadcastMsg = Component.text(configsHandler.getMessage(
+                "player-disconnect",
+                Map.of("player", player.getUsername())
+        ));
         server.getAllPlayers().forEach(p -> p.sendMessage(broadcastMsg));
         serverHandler.onDisconnectEvent();
         offlineModeClass.onDisconnectEvent(event);
     }
 
+    /**
+     * Обрабатывает переходы между серверами после фактического подключения.
+     */
     @Subscribe
     public void onServerPostConnectedEvent(ServerPostConnectEvent event) {
         serverHandler.onServerPostConnectedEvent(event);
@@ -156,12 +186,18 @@ public class AutoServerControl {
     // =========================
     // ПОДКЛЮЧЕНИЕ К СЕРВЕРУ
     // =========================
+    /**
+     * Перехватывает подключение к серверу до перехода, чтобы при необходимости запустить сервер.
+     */
     @Subscribe
     public void onServerPreConnect(ServerPreConnectEvent event) {
         serverHandler.onServerPreConnect(event);
     }
 
 
+    /**
+     * Реализует глобальный чат: сообщение, начинающееся с "!", отправляется всем игрокам proxy.
+     */
     @Subscribe
     public void onChat(PlayerChatEvent event) {
         Player player = event.getPlayer();
@@ -182,21 +218,24 @@ public class AutoServerControl {
         // получаем сервер игрока
         String serverName = player.getCurrentServer().map(s -> s.getServerInfo().getName()).orElse("unknown");
 
-        configuredServer serverd = serverHandler.servers.get(serverName);
+        configuredServer currentConfiguredServer = serverHandler.servers.get(serverName);
 
-        if (serverd == null && !serverName.equals("lobby")) {
+        if (currentConfiguredServer == null && !serverName.equals("lobby")) {
             Component msg = Component.text("Ошибка 100");
             player.sendMessage(msg);
             return;
         }
 
         // красивое сообщение
-        Component msg = Component.text("§6[Глобальный] §f" + player.getUsername() + " §7(" + (serverd != null ? serverd.displayName : "lobby") + "§7) §8» §f" + globalMessage);
+        Component msg = Component.text("§6[Глобальный] §f" + player.getUsername() + " §7(" + (currentConfiguredServer != null ? currentConfiguredServer.displayName : "lobby") + "§7) §8» §f" + globalMessage);
 
         // рассылка всем игрокам
         server.getAllPlayers().forEach(p -> p.sendMessage(msg));
     }
 
+    /**
+     * Перечитывает все конфиги и обновляет динамические команды серверов.
+     */
     public void reloadConfigs() {
         configsHandler.reloadConfigs();
         registerCommands();

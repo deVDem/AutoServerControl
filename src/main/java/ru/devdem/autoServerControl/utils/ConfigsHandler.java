@@ -10,15 +10,42 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Создает и загружает конфигурационные файлы плагина.
+ */
 public class ConfigsHandler {
 
+    /**
+     * Сообщения по умолчанию, которые используются, если messages.yml пустой или в нем нет ключа.
+     */
+    private static final Map<String, String> DEFAULT_MESSAGES = Map.of(
+            "player-join", "§eИгрок §f{player}§e подключился на сервер!",
+            "player-disconnect", "§eИгрок §f{player}§e отключился",
+            "player-return-lobby", "§eИгрок §f{player}§e вернулся в лобби",
+            "player-switch-server", "§eИгрок §f{player}§e отправился в {server}",
+            "player-switch-unknown", "§eИгрок §f{player}§e перешел на {server}"
+    );
 
+    /** Главный класс плагина, нужен для передачи в ConnectionServerHandler. */
     private final AutoServerControl plugin;
+
+    /** Логгер для ошибок загрузки и информационных сообщений. */
     private final Logger logger;
+
+    /** Папка данных плагина, куда копируются YAML-файлы. */
     private final Path dataDirectory;
+
+    /** Velocity proxy, нужен при создании объектов configuredServer. */
     private final ProxyServer server;
 
+    /** Загруженные сообщения из messages.yml с fallback-значениями. */
+    private final Map<String, String> messages = new ConcurrentHashMap<>();
+
+    /**
+     * Создает обработчик конфигов.
+     */
     public ConfigsHandler(AutoServerControl plugin, Logger logger, Path dataDirectory, ProxyServer server) {
         this.plugin = plugin;
         this.logger = logger;
@@ -26,12 +53,19 @@ public class ConfigsHandler {
         this.server = server;
     }
 
+    /**
+     * Перечитывает все конфиги плагина.
+     */
     public void reloadConfigs() {
         createDefaultConfig();
         loadServers();
         loadSQLConfig();
+        loadMessages();
     }
 
+    /**
+     * Создает config.yml, servers.yml и messages.yml из ресурсов jar, если их еще нет.
+     */
     private void createDefaultConfig() {
         try {
             if (!Files.exists(dataDirectory)) {
@@ -53,11 +87,22 @@ public class ConfigsHandler {
                     logger.info("Создан servers.yml");
                 }
             }
+
+            Path messagesPath = dataDirectory.resolve("messages.yml");
+            if (!Files.exists(messagesPath)) {
+                try (InputStream in = getClass().getClassLoader().getResourceAsStream("messages.yml")) {
+                    Files.copy(in, messagesPath);
+                    logger.info("Создан messages.yml");
+                }
+            }
         } catch (Exception e) {
             logger.error("Ошибка создания конфига", e);
         }
     }
 
+    /**
+     * Загружает параметры MySQL из config.yml и инициализирует DatabaseManager.
+     */
     public void loadSQLConfig() {
         try {
             Path configPath = dataDirectory.resolve("config.yml");
@@ -71,7 +116,6 @@ public class ConfigsHandler {
             String database = (String) mysql.getOrDefault("database", "velocity_users");
             String username = (String) mysql.getOrDefault("username", "root");
             String password = (String) mysql.getOrDefault("password", "");
-            boolean useSSL = (boolean) mysql.getOrDefault("useSSL", false);
             DatabaseManager.getInstance(host, port, database, username, password);
             logger.info("MySQL config загружен");
 
@@ -82,6 +126,9 @@ public class ConfigsHandler {
     }
 
 
+    /**
+     * Загружает список управляемых серверов из servers.yml.
+     */
     private void loadServers() {
         try {
             Path serverPath = dataDirectory.resolve("servers.yml");
@@ -113,6 +160,50 @@ public class ConfigsHandler {
 
         } catch (Exception e) {
             logger.error("Ошибка загрузки конфига с серверами", e);
+        }
+    }
+
+    /**
+     * Возвращает сообщение по ключу и подставляет плейсхолдеры формата {name}.
+     *
+     * @param key ключ сообщения в messages.yml
+     * @param placeholders значения для замены плейсхолдеров
+     * @return готовая строка для отправки игрокам
+     */
+    public String getMessage(String key, Map<String, String> placeholders) {
+        String message = messages.getOrDefault(key, DEFAULT_MESSAGES.getOrDefault(key, key));
+        for (Map.Entry<String, String> placeholder : placeholders.entrySet()) {
+            message = message.replace("{" + placeholder.getKey() + "}", placeholder.getValue());
+        }
+        return message;
+    }
+
+    /**
+     * Загружает messages.yml поверх DEFAULT_MESSAGES.
+     */
+    private void loadMessages() {
+        try {
+            Path messagesPath = dataDirectory.resolve("messages.yml");
+
+            Yaml yaml = new Yaml();
+            Map<String, Object> data = yaml.load(Files.newInputStream(messagesPath));
+
+            messages.clear();
+            messages.putAll(DEFAULT_MESSAGES);
+            if (data == null) {
+                logger.warn("messages.yml пустой");
+                return;
+            }
+
+            for (Map.Entry<String, Object> entry : data.entrySet()) {
+                if (entry.getValue() != null) {
+                    messages.put(entry.getKey(), String.valueOf(entry.getValue()));
+                }
+            }
+
+            logger.info("messages.yml загружен");
+        } catch (Exception e) {
+            logger.error("Ошибка загрузки messages.yml", e);
         }
     }
 
